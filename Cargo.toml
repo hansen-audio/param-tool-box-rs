@@ -1,0 +1,20 @@
+[package]
+name = "param-tool-box-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+cbindgen = "0.24.3"
+
+[lib]
+crate-type = ["staticlib"] # Create a static C lib.
+# Create type 'lib' makes the benchmark worse for Rust code, to be investigated!
+# crate-type = ["lib"] 
+
+[profile.release]
+lto = true        # Enable Link Time Optimization
+codegen-units = 1 # Reduce number of codegen units to increase optimizations.
+panic = "abort"   # Abort on panic
+
