@@ -89,7 +89,7 @@ impl Normalizer {
     }
 
     fn transform(&mut self) -> &mut Self {
-        self.value = (self.value - self.context.min) * self.context.inverted;
+        self.value = (self.value - self.context.min) * self.context.range_inv;
         self
     }
 
@@ -128,7 +128,7 @@ impl Physicalizer {
     }
 
     fn transform(&mut self) -> &mut Self {
-        self.value = self.value * (self.context.normal) + self.context.min;
+        self.value = self.value * (self.context.range) + self.context.min;
 
         self
     }
@@ -146,8 +146,8 @@ impl Physicalizer {
 struct Context {
     min: f32,
     max: f32,
-    normal: f32,
-    inverted: f32,
+    range: f32,
+    range_inv: f32,
     is_int: bool,
     scale_factor: Option<f32>,
 }
@@ -157,8 +157,8 @@ impl Context {
         Self {
             min,
             max,
-            normal: max - min,
-            inverted: 1. / (max - min),
+            range: max - min,
+            range_inv: 1. / (max - min),
             is_int,
             scale_factor: Self::calc_opt_transform_factor(min, max, mid),
         }
