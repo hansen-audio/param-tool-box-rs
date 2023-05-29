@@ -1,4 +1,4 @@
-// Copyright(c) 2021 Hansen Audio.
+// Copyright(c) 2023 Hansen Audio.
 
 pub trait Transform {
     fn max(&self) -> f32;

@@ -1,4 +1,4 @@
-// Copyright(c) 2021 Hansen Audio.
+// Copyright(c) 2023 Hansen Audio.
 
 use crate::convert::transform::Display;
 use crate::convert::transform::Transform;
@@ -52,8 +52,8 @@ impl Transform for Converter {
         }
     }
 
-    fn to_normalized(&self, physcial: f32) -> f32 {
-        let mut clamped_physical = physcial.clamp(self.min, self.max);
+    fn to_normalized(&self, physical: f32) -> f32 {
+        let mut clamped_physical = physical.clamp_inv(self.min, self.max);
         if self.is_int {
             clamped_physical = clamped_physical.round()
         };
@@ -78,7 +78,7 @@ impl Transform for Converter {
 
 impl Display for Converter {
     fn to_display(&self, val: f32, precision: Option<usize>) -> String {
-        let clamped_val = val.clamp(self.min(), self.max());
+        let clamped_val = val.clamp_inv(self.min(), self.max());
 
         const DEFAULT_PRECISION: usize = 2;
         format!(
@@ -120,6 +120,21 @@ fn up_scale(val: f32, a: f32) -> f32 {
 
 fn down_scale(val: f32, a: f32) -> f32 {
     -1.0 / ((1.0 / val - 1.0) / a - 1.0)
+}
+
+trait ClampInverted {
+    fn clamp_inv(&self, min: f32, max: f32) -> f32;
+}
+
+impl ClampInverted for f32 {
+    fn clamp_inv(&self, min: f32, max: f32) -> f32 {
+        let is_inverted = max < min;
+        return if is_inverted {
+            self.clamp(max, min)
+        } else {
+            self.clamp(min, max)
+        };
+    }
 }
 
 #[cfg(test)]
