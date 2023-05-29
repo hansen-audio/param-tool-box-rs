@@ -1,66 +1,54 @@
 // Copyright(c) 2023 Hansen Audio.
 
-use crate::convert::{display_handling::DisplayHandling, scaler::Scaler, transformer::Transformer};
+use crate::convert::display_handling::DisplayHandling;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Converter {
-    transformer: Transformer,
-    scaler: Scaler,
-    is_int: bool,
+    context: Context,
 }
 
 impl Converter {
     pub fn new(min: f32, max: f32, mid: Option<f32>, is_int: bool) -> Self {
         Self {
-            transformer: Transformer::new(min, max),
-            scaler: Scaler::new(min, max, mid),
-            is_int,
+            context: Context::new(min, max, mid, is_int),
         }
     }
 
     pub fn is_int(&self) -> bool {
-        self.is_int
+        self.context.is_int
     }
 }
 
 impl Converter {
     pub fn to_physical(&self, normalized: f32) -> f32 {
-        let mut tmp_normalized = normalized.clamp(0., 1.);
-        tmp_normalized = self.scaler.scale_up(tmp_normalized);
-
-        let physical = self.transformer.up_transform(tmp_normalized);
-        physical.round_cond(self.is_int)
+        Physicalizer::new(normalized, self.context)
+            .clamp()
+            .scale()
+            .transform()
+            .round()
     }
 
     pub fn to_normalized(&self, physical: f32) -> f32 {
-        let tmp_physical = physical.clamp_inv(self.transformer.min(), self.transformer.max());
-
-        let normalized = self
-            .transformer
-            .down_transform(tmp_physical.round_cond(self.is_int));
-
-        self.scaler.scale_down(normalized)
+        Normalizer::new(physical, self.context)
+            .clamp()
+            .round()
+            .transform()
+            .scale()
     }
 
     pub fn min(&self) -> f32 {
-        self.transformer.min()
+        self.context.min
     }
 
     pub fn max(&self) -> f32 {
-        self.transformer.max()
+        self.context.max
     }
 }
 
 impl DisplayHandling for Converter {
     fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
-        let clamped_val = physical.clamp_inv(self.min(), self.max());
-
         const DEFAULT_PRECISION: usize = 2;
-        format!(
-            "{1:.0$}",
-            precision.unwrap_or(DEFAULT_PRECISION),
-            clamped_val
-        )
+        format!("{1:.0$}", precision.unwrap_or(DEFAULT_PRECISION), physical)
     }
 
     fn from_display(&self, physical: String) -> f32 {
@@ -73,12 +61,135 @@ impl DisplayHandling for Converter {
     }
 }
 
-trait F32Extra {
-    fn clamp_inv(&self, min: f32, max: f32) -> f32;
-    fn round_cond(&self, yes: bool) -> f32;
+#[derive(Debug, Clone)]
+struct Normalizer {
+    value: f32,
+    context: Context,
 }
 
-impl F32Extra for f32 {
+impl Normalizer {
+    fn new(value: f32, context: Context) -> Self {
+        Self { value, context }
+    }
+
+    fn clamp(&mut self) -> &mut Self {
+        if self.context.is_inverted() {
+            self.value = self.value.clamp(self.context.max, self.context.min);
+        } else {
+            self.value = self.value.clamp(self.context.min, self.context.max);
+        };
+        self
+    }
+
+    fn scale(&mut self) -> f32 {
+        match self.context.scale_factor {
+            Some(a) => -1.0 / ((1.0 / self.value - 1.0) / a - 1.0),
+            None => self.value,
+        }
+    }
+
+    fn transform(&mut self) -> &mut Self {
+        self.value = (self.value - self.context.min) * self.context.inverted;
+        self
+    }
+
+    fn round(&mut self) -> &mut Self {
+        if self.context.is_int {
+            self.value = self.value.round();
+        }
+
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Physicalizer {
+    value: f32,
+    context: Context,
+}
+
+impl Physicalizer {
+    fn new(value: f32, context: Context) -> Self {
+        Self { value, context }
+    }
+
+    fn clamp(&mut self) -> &mut Self {
+        self.value = self.value.clamp(0., 1.);
+        self
+    }
+
+    fn scale(&mut self) -> &mut Self {
+        self.value = match self.context.scale_factor {
+            Some(a) => self.value / (self.value + a * (self.value - 1.0)),
+            None => self.value,
+        };
+
+        self
+    }
+
+    fn transform(&mut self) -> &mut Self {
+        self.value = self.value * (self.context.normal) + self.context.min;
+
+        self
+    }
+
+    fn round(&mut self) -> f32 {
+        if self.context.is_int {
+            self.value = self.value.round();
+        }
+
+        self.value
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Context {
+    min: f32,
+    max: f32,
+    normal: f32,
+    inverted: f32,
+    is_int: bool,
+    scale_factor: Option<f32>,
+}
+
+impl Context {
+    fn new(min: f32, max: f32, mid: Option<f32>, is_int: bool) -> Self {
+        Self {
+            min,
+            max,
+            normal: max - min,
+            inverted: 1. / (max - min),
+            is_int,
+            scale_factor: Self::calc_opt_transform_factor(min, max, mid),
+        }
+    }
+
+    fn is_inverted(&self) -> bool {
+        self.max < self.min
+    }
+
+    fn calc_opt_transform_factor(min: f32, max: f32, mid: Option<f32>) -> Option<f32> {
+        let a = match mid {
+            Some(opt_mid) => Some(Self::calc_transform_factor(min, max, opt_mid)),
+            None => None,
+        };
+        a
+    }
+
+    fn calc_transform_factor(min: f32, max: f32, mid: f32) -> f32 {
+        let y_norm = (mid - min) / (max - min);
+        let x_norm = 0.5;
+        let t = -1.0 / (((x_norm / y_norm - x_norm) / (x_norm - 1.0)) - 1.0);
+
+        1. - (1. / t)
+    }
+}
+
+trait Physical {
+    fn clamp_inv(&self, min: f32, max: f32) -> f32;
+}
+
+impl Physical for f32 {
     fn clamp_inv(&self, min: f32, max: f32) -> f32 {
         let is_inverted = max < min;
         return if is_inverted {
@@ -86,14 +197,6 @@ impl F32Extra for f32 {
         } else {
             self.clamp(min, max)
         };
-    }
-
-    fn round_cond(&self, yes: bool) -> f32 {
-        if yes {
-            self.round()
-        } else {
-            *self
-        }
     }
 }
 
