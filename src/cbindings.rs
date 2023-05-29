@@ -1,11 +1,10 @@
 // Copyright(c) 2023 Hansen Audio.
 
+use std::ffi::CString;
+// use std::slice;
 use std::{ffi::CStr, os::raw::c_char};
 
-use crate::convert::{
-    converter::Converter,
-    transform::{Display, Transform},
-};
+use crate::convert::{converter::Converter, display_handling::DisplayHandling};
 
 //-----------------------------------------------------------------------------
 // https://firefox-source-docs.mozilla.org/writing-rust-code/ffi.html
@@ -28,6 +27,24 @@ pub unsafe extern "C" fn new_list(num_items: i32) -> *mut Converter {
     Box::into_raw(Box::new(c))
 }
 
+/*
+TODO!!!
+#[no_mangle]
+pub unsafe extern "C" fn new_list2(s: *const *const c_char, num_items: i32) -> *mut Converter {
+    let max = (num_items - 1) as f32;
+    let c = Converter::new(0., max, None, true);
+
+    let slice = slice::from_raw_parts(s, num_items as usize);
+    for v in slice {
+        let s = CStr::from_ptr(*v);
+        let tmp = s.to_str();
+        println!("{:?}", tmp.unwrap());
+    }
+
+    Box::into_raw(Box::new(c))
+}
+*/
+
 #[no_mangle]
 pub unsafe extern "C" fn delete_converter(converter: *mut Converter) {
     drop(Box::from_raw(converter));
@@ -43,9 +60,11 @@ pub unsafe extern "C" fn to_normalized(converter: &Converter, physical: f32) -> 
     converter.to_normalized(physical)
 }
 
-pub type FnStringCallback = extern "C" fn(s: *const u8, len: i32);
+/// String 's' guaranteed to be null terminated
+pub type FnStringCallback = extern "C" fn(s: *const c_char);
 
 #[no_mangle]
+#[allow(temporary_cstring_as_ptr)] // this warning should be ok here
 pub extern "C" fn to_string(
     converter: &Converter,
     physical: f32,
@@ -53,8 +72,8 @@ pub extern "C" fn to_string(
     fn_string: FnStringCallback,
 ) {
     let display_string = converter.to_display(physical, Some(precision));
-    let c_display_string = display_string.as_ptr();
-    fn_string(c_display_string, display_string.len() as i32);
+    let c_display_string = CString::new(display_string);
+    fn_string(c_display_string.unwrap().as_ptr());
 }
 
 /// String 's' MUST BE null terminated!
