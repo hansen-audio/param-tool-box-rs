@@ -77,8 +77,8 @@ impl Transform for Converter {
 }
 
 impl Display for Converter {
-    fn to_display(&self, val: f32, precision: Option<usize>) -> String {
-        let clamped_val = val.clamp_inv(self.min(), self.max());
+    fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
+        let clamped_val = physical.clamp_inv(self.min(), self.max());
 
         const DEFAULT_PRECISION: usize = 2;
         format!(
@@ -88,10 +88,10 @@ impl Display for Converter {
         )
     }
 
-    fn from_display(&self, value: String) -> f32 {
-        let parse_result = value.parse::<f32>();
+    fn from_display(&self, physical: String) -> f32 {
+        let value = physical.parse::<f32>();
 
-        match parse_result {
+        match value {
             Ok(val) => val,
             Err(_) => self.min(),
         }
