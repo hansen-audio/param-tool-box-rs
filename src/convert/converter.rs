@@ -29,20 +29,16 @@ impl Converter {
         tmp_normalized = self.scaler.scale_up(tmp_normalized);
 
         let physical = self.transformer.up_transform(tmp_normalized);
-        if self.is_int {
-            physical.round()
-        } else {
-            physical
-        }
+        physical.round_cond(self.is_int)
     }
 
     pub fn to_normalized(&self, physical: f32) -> f32 {
-        let mut tmp_physical = physical.clamp_inv(self.transformer.min(), self.transformer.max());
-        if self.is_int {
-            tmp_physical = tmp_physical.round()
-        };
+        let tmp_physical = physical.clamp_inv(self.transformer.min(), self.transformer.max());
 
-        let normalized = self.transformer.down_transform(tmp_physical);
+        let normalized = self
+            .transformer
+            .down_transform(tmp_physical.round_cond(self.is_int));
+
         self.scaler.scale_down(normalized)
     }
 
@@ -77,11 +73,12 @@ impl DisplayHandling for Converter {
     }
 }
 
-trait ClampInverted {
+trait F32Extra {
     fn clamp_inv(&self, min: f32, max: f32) -> f32;
+    fn round_cond(&self, yes: bool) -> f32;
 }
 
-impl ClampInverted for f32 {
+impl F32Extra for f32 {
     fn clamp_inv(&self, min: f32, max: f32) -> f32 {
         let is_inverted = max < min;
         return if is_inverted {
@@ -89,6 +86,14 @@ impl ClampInverted for f32 {
         } else {
             self.clamp(min, max)
         };
+    }
+
+    fn round_cond(&self, yes: bool) -> f32 {
+        if yes {
+            self.round()
+        } else {
+            *self
+        }
     }
 }
 
