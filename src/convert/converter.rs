@@ -1,22 +1,19 @@
 // Copyright(c) 2023 Hansen Audio.
 
-use crate::convert::transform::Display;
-use crate::convert::transform::Transform;
+use crate::convert::{display_handling::DisplayHandling, scaler::Scaler, transformer::Transformer};
 
 #[derive(Debug, Clone)]
 pub struct Converter {
-    min: f32,
-    max: f32,
-    a: Option<f32>,
+    transformer: Transformer,
+    scaler: Scaler,
     is_int: bool,
 }
 
 impl Converter {
     pub fn new(min: f32, max: f32, mid: Option<f32>, is_int: bool) -> Self {
         Self {
-            min,
-            max,
-            a: calc_opt_transform_factor(min, max, mid),
+            transformer: Transformer::new(min, max),
+            scaler: Scaler::new(min, max, mid),
             is_int,
         }
     }
@@ -24,27 +21,14 @@ impl Converter {
     pub fn is_int(&self) -> bool {
         self.is_int
     }
-
-    fn up_transform(&self, norm: f32) -> f32 {
-        norm * (self.max - self.min) + self.min
-    }
-
-    fn down_transform(&self, phys: f32) -> f32 {
-        (phys - self.min) / (self.max - self.min)
-    }
 }
 
-impl Transform for Converter {
-    fn to_physical(&self, normalized: f32) -> f32 {
-        let clamped_normalized = normalized.clamp(0., 1.);
+impl Converter {
+    pub fn to_physical(&self, normalized: f32) -> f32 {
+        let mut tmp_normalized = normalized.clamp(0., 1.);
+        tmp_normalized = self.scaler.scale_up(tmp_normalized);
 
-        // TODO: Can this be optimized at compile time?
-        let scaled_normalized = match self.a {
-            Some(a) => up_scale(clamped_normalized, a),
-            None => clamped_normalized,
-        };
-
-        let physical = self.up_transform(scaled_normalized);
+        let physical = self.transformer.up_transform(tmp_normalized);
         if self.is_int {
             physical.round()
         } else {
@@ -52,31 +36,26 @@ impl Transform for Converter {
         }
     }
 
-    fn to_normalized(&self, physical: f32) -> f32 {
-        let mut clamped_physical = physical.clamp_inv(self.min, self.max);
+    pub fn to_normalized(&self, physical: f32) -> f32 {
+        let mut tmp_physical = physical.clamp_inv(self.transformer.min(), self.transformer.max());
         if self.is_int {
-            clamped_physical = clamped_physical.round()
+            tmp_physical = tmp_physical.round()
         };
 
-        let normalized = self.down_transform(clamped_physical);
-
-        // TODO: Can this be optimized at compile time?
-        match self.a {
-            Some(a) => down_scale(normalized, a),
-            None => normalized,
-        }
+        let normalized = self.transformer.down_transform(tmp_physical);
+        self.scaler.scale_down(normalized)
     }
 
-    fn min(&self) -> f32 {
-        self.min
+    pub fn min(&self) -> f32 {
+        self.transformer.min()
     }
 
-    fn max(&self) -> f32 {
-        self.max
+    pub fn max(&self) -> f32 {
+        self.transformer.max()
     }
 }
 
-impl Display for Converter {
+impl DisplayHandling for Converter {
     fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
         let clamped_val = physical.clamp_inv(self.min(), self.max());
 
@@ -96,30 +75,6 @@ impl Display for Converter {
             Err(_) => self.min(),
         }
     }
-}
-
-fn calc_opt_transform_factor(min: f32, max: f32, mid: Option<f32>) -> Option<f32> {
-    let a = match mid {
-        Some(opt_mid) => Some(calc_transform_factor(min, max, opt_mid)),
-        None => None,
-    };
-    a
-}
-
-fn calc_transform_factor(min: f32, max: f32, mid: f32) -> f32 {
-    let y_norm = (mid - min) / (max - min);
-    let x_norm = 0.5;
-    let t = -1.0 / (((x_norm / y_norm - x_norm) / (x_norm - 1.0)) - 1.0);
-
-    1. - (1. / t)
-}
-
-fn up_scale(val: f32, a: f32) -> f32 {
-    val / (val + a * (val - 1.0))
-}
-
-fn down_scale(val: f32, a: f32) -> f32 {
-    -1.0 / ((1.0 / val - 1.0) / a - 1.0)
 }
 
 trait ClampInverted {
