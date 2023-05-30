@@ -4,26 +4,29 @@ use std::ffi::CString;
 // use std::slice;
 use std::{ffi::CStr, os::raw::c_char};
 
-use crate::convert::{converter::Converter, display_handling::DisplayHandling};
+use crate::convert::{
+    converter::{Converter, Kind},
+    display_handling::DisplayHandling,
+};
 
 //-----------------------------------------------------------------------------
 // https://firefox-source-docs.mozilla.org/writing-rust-code/ffi.html
 #[no_mangle]
-pub unsafe extern "C" fn new_linear(min: f32, max: f32, is_int: bool) -> *mut Converter {
-    let c = Converter::new(min, max, None, is_int);
+pub unsafe extern "C" fn new_linear(min: f32, max: f32, kind: Kind) -> *mut Converter {
+    let c = Converter::new(min, max, None, kind);
     Box::into_raw(Box::new(c))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn new_log(min: f32, max: f32, mid: f32) -> *mut Converter {
-    let c = Converter::new(min, max, Some(mid), false);
+    let c = Converter::new(min, max, Some(mid), Kind::Float);
     Box::into_raw(Box::new(c))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn new_list(num_items: i32) -> *mut Converter {
     let max = (num_items - 1) as f32;
-    let c = Converter::new(0., max, None, true);
+    let c = Converter::new(0., max, None, Kind::Int);
     Box::into_raw(Box::new(c))
 }
 
@@ -91,11 +94,10 @@ pub unsafe extern "C" fn from_string(converter: &Converter, s: *const c_char) ->
 
 #[no_mangle]
 pub extern "C" fn num_steps(converter: &Converter) -> i32 {
-    if converter.is_int() {
-        return (converter.max() - converter.min()) as i32;
+    match converter.kind() {
+        Kind::Float => (converter.max() - converter.min()) as i32,
+        Kind::Int => 0,
     }
-
-    0
 }
 
 #[cfg(test)]
@@ -104,7 +106,7 @@ mod test {
 
     #[test]
     fn test_new_delete() {
-        let c_lin = unsafe { new_linear(0., 100., false) };
+        let c_lin = unsafe { new_linear(0., 100., Kind::Float) };
         unsafe { delete_converter(c_lin) };
 
         let c_log = unsafe { new_log(0., 100., 25.) };
@@ -113,7 +115,7 @@ mod test {
 
     #[test]
     fn test() {
-        let transformer = Converter::new(0., 100., None, false);
+        let transformer = Converter::new(0., 100., None, Kind::Float);
         let val = 0.5;
         unsafe { to_physical(&transformer, val) };
     }
