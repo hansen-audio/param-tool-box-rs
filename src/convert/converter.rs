@@ -14,12 +14,6 @@ impl Converter {
         }
     }
 
-    pub fn is_int(&self) -> bool {
-        self.context.is_int
-    }
-}
-
-impl Converter {
     pub fn to_physical(&self, normalized: f32) -> f32 {
         Physicalizer::new(normalized, self.context)
             .clamp()
@@ -42,6 +36,10 @@ impl Converter {
 
     pub fn max(&self) -> f32 {
         self.context.max
+    }
+
+    pub fn is_int(&self) -> bool {
+        self.context.is_int
     }
 }
 
