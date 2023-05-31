@@ -47,6 +47,13 @@ impl Converter {
         self.context.max
     }
 
+    pub fn num_steps(&self) -> usize {
+        match self.kind() {
+            Kind::Float => 0,
+            Kind::Int => (self.max() - self.min()) as usize,
+        }
+    }
+
     pub fn kind(&self) -> Kind {
         self.context.kind()
     }

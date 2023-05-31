@@ -94,10 +94,7 @@ pub unsafe extern "C" fn from_string(converter: &Converter, s: *const c_char) ->
 
 #[no_mangle]
 pub extern "C" fn num_steps(converter: &Converter) -> i32 {
-    match converter.kind() {
-        Kind::Float => (converter.max() - converter.min()) as i32,
-        Kind::Int => 0,
-    }
+    converter.num_steps() as i32
 }
 
 #[cfg(test)]
