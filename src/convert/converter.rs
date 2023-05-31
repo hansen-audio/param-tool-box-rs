@@ -1,5 +1,7 @@
 // Copyright(c) 2023 Hansen Audio.
 
+use std::ops::Neg;
+
 use crate::convert::display_handling::DisplayHandling;
 
 #[derive(Debug, Clone, Copy)]
@@ -88,7 +90,8 @@ impl Normalizer {
 
     fn scale(&mut self) -> f32 {
         match self.context.scale_factor {
-            Some(a) => -1.0 / ((1.0 / self.value - 1.0) / a - 1.0),
+            //Some(a) => -1.0 / ((1.0 / self.value - 1.0) / a - 1.0),
+            Some(a) => (a.neg() * self.value) / ((a.neg() * self.value) - self.value + 1.0),
             None => self.value,
         }
     }
@@ -184,9 +187,10 @@ impl Context {
     }
 
     fn calc_transform_factor(min: f32, max: f32, mid: f32) -> f32 {
-        let y_norm = (mid - min) / (max - min);
-        let x_norm = 0.5;
-        let t = -1.0 / (((x_norm / y_norm - x_norm) / (x_norm - 1.0)) - 1.0);
+        let y = (mid - min) / (max - min);
+        let x = 0.5;
+        // let t = -1.0 / (((x / y - x) / (x - 1.0)) - 1.0);
+        let t = y.neg() * (x - 1.) / (x - 2. * x * y + y);
 
         1. - (1. / t)
     }
@@ -318,5 +322,32 @@ mod tests {
         let phys = transform.to_display(50., Some(2));
         // println!("{:#?}", res);
         assert_eq!(phys, "50.00");
+    }
+
+    #[test]
+    fn test_math_equality() {
+        let val = 0.567 as f32;
+        let a = 0.234;
+        let x = -1.0 / ((1.0 / val - 1.0) / a - 1.0);
+        let y = (a.neg() * val) / ((a.neg() * val) - val + 1.0);
+
+        let z = (x - y).abs();
+        let eps = 0.000001 as f32;
+        assert!(z < eps);
+    }
+
+    #[test]
+    fn test_scale_factor_simplification() {
+        let min = 0. as f32;
+        let max = 100. as f32;
+        let mid = 0.25 as f32;
+        let y = (mid - min) / (max - min);
+        let x = 0.5;
+
+        let t = -1.0 / (((x / y - x) / (x - 1.0)) - 1.0);
+        let s = y.neg() * (x - 1.) / (x - 2. * x * y + y);
+        let z = (t - s).abs();
+        let eps = 0.000001 as f32;
+        assert!(z < eps);
     }
 }
