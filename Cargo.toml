@@ -14,7 +14,7 @@ crate-type = ["staticlib"] # Create a static C lib.
 # crate-type = ["lib"] 
 
 [profile.release]
-lto = true        # Enable Link Time Optimization
+# lto = true        # Enable Link Time Optimization
 codegen-units = 1 # Reduce number of codegen units to increase optimizations.
 panic = "abort"   # Abort on panic
 
