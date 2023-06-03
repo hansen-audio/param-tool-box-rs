@@ -207,21 +207,6 @@ impl Context {
     }
 }
 
-trait Physical {
-    fn clamp_inv(&self, min: f32, max: f32) -> f32;
-}
-
-impl Physical for f32 {
-    fn clamp_inv(&self, min: f32, max: f32) -> f32 {
-        let is_inverted = max < min;
-        return if is_inverted {
-            self.clamp(max, min)
-        } else {
-            self.clamp(min, max)
-        };
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
