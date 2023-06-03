@@ -12,39 +12,64 @@ pub enum Kind {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct ValueRange {
+    min: f32,
+    max: f32,
+    range: f32,
+    range_inv: f32,
+    is_inverted: bool,
+}
+
+impl ValueRange {
+    fn new(min: f32, max: f32) -> Self {
+        Self {
+            min,
+            max,
+            range: max - min,
+            range_inv: 1. / (max - min),
+            is_inverted: max < min,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Converter {
-    context: Context,
+    value_range: ValueRange,
+    kind: Kind,
+    scale_factor: Option<f32>,
 }
 
 impl Converter {
     pub fn new(min: f32, max: f32, mid: Option<f32>, kind: Kind) -> Self {
         Self {
-            context: Context::new(min, max, mid, kind),
+            value_range: ValueRange::new(min, max),
+            kind,
+            scale_factor: Self::calc_opt_transform_factor(min, max, mid),
         }
     }
 
     pub fn to_physical(&self, normalized: f32) -> f32 {
-        Physicalizer::new(normalized, self.context)
+        Physicalizer::new(normalized)
             .clamp()
-            .scale()
-            .transform()
-            .round()
+            .scale(self.scale_factor)
+            .transform(self.value_range)
+            .round(self.kind)
     }
 
     pub fn to_normalized(&self, physical: f32) -> f32 {
-        Normalizer::new(physical, self.context)
-            .clamp()
-            .round()
-            .transform()
-            .scale()
+        Normalizer::new(physical)
+            .clamp(self.value_range)
+            .round(self.kind)
+            .transform(self.value_range)
+            .scale(self.scale_factor)
     }
 
     pub fn min(&self) -> f32 {
-        self.context.min
+        self.value_range.min
     }
 
     pub fn max(&self) -> f32 {
-        self.context.max
+        self.value_range.max
     }
 
     pub fn num_steps(&self) -> usize {
@@ -55,134 +80,7 @@ impl Converter {
     }
 
     pub fn kind(&self) -> Kind {
-        self.context.kind()
-    }
-}
-
-impl DisplayHandling for Converter {
-    fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
-        const DEFAULT_PRECISION: usize = 2;
-        format!("{1:.0$}", precision.unwrap_or(DEFAULT_PRECISION), physical)
-    }
-
-    fn from_display(&self, physical: String) -> f32 {
-        let value = physical.parse::<f32>();
-
-        match value {
-            Ok(val) => val,
-            Err(_) => self.min(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Normalizer {
-    value: f32,
-    context: Context,
-}
-
-impl Normalizer {
-    fn new(value: f32, context: Context) -> Self {
-        Self { value, context }
-    }
-
-    fn clamp(&mut self) -> &mut Self {
-        if self.context.is_inverted() {
-            self.value = self.value.clamp(self.context.max, self.context.min);
-        } else {
-            self.value = self.value.clamp(self.context.min, self.context.max);
-        };
-        self
-    }
-
-    fn scale(&mut self) -> f32 {
-        match self.context.scale_factor {
-            //Some(a) => -1.0 / ((1.0 / self.value - 1.0) / a - 1.0),
-            Some(a) => (a.neg() * self.value) / ((a.neg() * self.value) - self.value + 1.0),
-            None => self.value,
-        }
-    }
-
-    fn transform(&mut self) -> &mut Self {
-        self.value = (self.value - self.context.min) * self.context.range_inv;
-        self
-    }
-
-    fn round(&mut self) -> &mut Self {
-        self.value = match self.context.kind() {
-            Kind::Float => self.value,
-            Kind::Int => self.value.round(),
-        };
-
-        self
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Physicalizer {
-    value: f32,
-    context: Context,
-}
-
-impl Physicalizer {
-    fn new(value: f32, context: Context) -> Self {
-        Self { value, context }
-    }
-
-    fn clamp(&mut self) -> &mut Self {
-        self.value = self.value.clamp(0., 1.);
-        self
-    }
-
-    fn scale(&mut self) -> &mut Self {
-        self.value = match self.context.scale_factor {
-            Some(a) => self.value / (self.value + a * (self.value - 1.0)),
-            None => self.value,
-        };
-
-        self
-    }
-
-    fn transform(&mut self) -> &mut Self {
-        self.value = self.value * (self.context.range) + self.context.min;
-
-        self
-    }
-
-    fn round(&mut self) -> f32 {
-        self.value = match self.context.kind() {
-            Kind::Float => self.value,
-            Kind::Int => self.value.round(),
-        };
-
-        self.value
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Context {
-    min: f32,
-    max: f32,
-    range: f32,
-    range_inv: f32,
-    kind: Kind,
-    scale_factor: Option<f32>,
-}
-
-impl Context {
-    fn new(min: f32, max: f32, mid: Option<f32>, kind: Kind) -> Self {
-        Self {
-            min,
-            max,
-            range: max - min,
-            range_inv: 1. / (max - min),
-            kind,
-            scale_factor: Self::calc_opt_transform_factor(min, max, mid),
-        }
-    }
-
-    fn is_inverted(&self) -> bool {
-        self.max < self.min
+        self.kind
     }
 
     fn calc_opt_transform_factor(min: f32, max: f32, mid: Option<f32>) -> Option<f32> {
@@ -201,9 +99,105 @@ impl Context {
 
         1. - (1. / t)
     }
+}
 
-    fn kind(&self) -> Kind {
-        self.kind
+#[derive(Debug, Clone)]
+struct Normalizer {
+    value: f32,
+}
+
+impl Normalizer {
+    fn new(value: f32) -> Self {
+        Self { value }
+    }
+
+    fn clamp(&mut self, value_range: ValueRange) -> &mut Self {
+        if value_range.is_inverted {
+            self.value = self.value.clamp(value_range.max, value_range.min);
+        } else {
+            self.value = self.value.clamp(value_range.min, value_range.max);
+        };
+        self
+    }
+
+    fn scale(&mut self, scale_factor: Option<f32>) -> f32 {
+        match scale_factor {
+            //Some(a) => -1.0 / ((1.0 / self.value - 1.0) / a - 1.0),
+            Some(a) => (a.neg() * self.value) / ((a.neg() * self.value) - self.value + 1.0),
+            None => self.value,
+        }
+    }
+
+    fn transform(&mut self, value_range: ValueRange) -> &mut Self {
+        self.value = (self.value - value_range.min) * value_range.range_inv;
+        self
+    }
+
+    fn round(&mut self, kind: Kind) -> &mut Self {
+        self.value = match kind {
+            Kind::Float => self.value,
+            Kind::Int => self.value.round(),
+        };
+
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Physicalizer {
+    value: f32,
+}
+
+impl Physicalizer {
+    const NORM_MIN: f32 = 0.;
+    const NORM_MAX: f32 = 1.;
+    fn new(value: f32) -> Self {
+        Self { value }
+    }
+
+    fn clamp(&mut self) -> &mut Self {
+        self.value = self.value.clamp(Self::NORM_MIN, Self::NORM_MAX);
+        self
+    }
+
+    fn scale(&mut self, scale_factor: Option<f32>) -> &mut Self {
+        self.value = match scale_factor {
+            Some(a) => self.value / (self.value + a * (self.value - Self::NORM_MAX)),
+            None => self.value,
+        };
+
+        self
+    }
+
+    fn transform(&mut self, value_range: ValueRange) -> &mut Self {
+        self.value = self.value * (value_range.range) + value_range.min;
+
+        self
+    }
+
+    fn round(&mut self, kind: Kind) -> f32 {
+        self.value = match kind {
+            Kind::Float => self.value,
+            Kind::Int => self.value.round(),
+        };
+
+        self.value
+    }
+}
+
+impl DisplayHandling for Converter {
+    fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
+        const DEFAULT_PRECISION: usize = 2;
+        format!("{1:.0$}", precision.unwrap_or(DEFAULT_PRECISION), physical)
+    }
+
+    fn from_display(&self, physical: String) -> f32 {
+        let value = physical.parse::<f32>();
+
+        match value {
+            Ok(val) => val,
+            Err(_) => self.min(),
+        }
     }
 }
 
