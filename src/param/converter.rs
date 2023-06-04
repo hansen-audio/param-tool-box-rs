@@ -13,13 +13,13 @@ pub enum Kind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Conversion {
+pub struct Converter {
     range: Range,
     kind: Kind,
     scale_factor: Option<f32>,
 }
 
-impl Conversion {
+impl Converter {
     pub fn new(min: f32, max: f32, mid: Option<f32>, kind: Kind) -> Self {
         Self {
             range: Range::new(min, max),
@@ -172,7 +172,7 @@ impl Physicalizer {
     }
 }
 
-impl DisplayHandling for Conversion {
+impl DisplayHandling for Converter {
     fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
         format!(
             "{1:.0$}",
@@ -199,7 +199,7 @@ mod tests {
     fn test_log_scale_to_physical() {
         const TEST_VALS: [f32; 5] = [50., 25., 75., 66., 33.];
         for expected in TEST_VALS {
-            let log_scale = Conversion::new(0., 100., Some(expected), Kind::Float);
+            let log_scale = Converter::new(0., 100., Some(expected), Kind::Float);
             let res = log_scale.to_physical(0.5);
             //println!("{:#?}", res);
             assert_eq!(res, expected);
@@ -210,7 +210,7 @@ mod tests {
     fn test_log_scale_physical_negative() {
         const EXPECTED: f32 = 3.;
 
-        let log_scale = Conversion::new(-96., 6., Some(EXPECTED), Kind::Float);
+        let log_scale = Converter::new(-96., 6., Some(EXPECTED), Kind::Float);
         let res = log_scale.to_physical(0.5);
 
         assert_eq!(res, EXPECTED);
@@ -220,7 +220,7 @@ mod tests {
     fn test_log_scale_physical_negative_min() {
         const EXPECTED: f32 = -96.;
 
-        let log_scale = Conversion::new(EXPECTED, 6., None, Kind::Float);
+        let log_scale = Converter::new(EXPECTED, 6., None, Kind::Float);
         let res = log_scale.to_physical(0.);
 
         assert_eq!(res, EXPECTED);
@@ -230,7 +230,7 @@ mod tests {
     fn test_log_scale_physical_negative_max() {
         const EXPECTED: f32 = 6.;
 
-        let log_scale = Conversion::new(-96., EXPECTED, None, Kind::Float);
+        let log_scale = Converter::new(-96., EXPECTED, None, Kind::Float);
         let res = log_scale.to_physical(1.);
 
         assert_eq!(res, EXPECTED);
@@ -240,7 +240,7 @@ mod tests {
     fn test_log_scale_physical_lfo() {
         const TEST_VALS: [[f32; 2]; 3] = [[1., 30.], [0., 0.01], [0.5, 1.]];
 
-        let log_scale = Conversion::new(0.01, 30., Some(1.), Kind::Float);
+        let log_scale = Converter::new(0.01, 30., Some(1.), Kind::Float);
         for [norm, phys] in TEST_VALS {
             let res = log_scale.to_physical(norm);
             assert_eq!(res, phys);
@@ -251,7 +251,7 @@ mod tests {
     fn test_log_scale_physical_lfo_max_min() {
         const TEST_VALS: [[f32; 2]; 3] = [[1., 0.01], [0., 30.], [0.5, 1.]];
 
-        let log_scale = Conversion::new(30., 0.01, Some(1.), Kind::Float);
+        let log_scale = Converter::new(30., 0.01, Some(1.), Kind::Float);
         for [norm, phys] in TEST_VALS {
             let res = log_scale.to_physical(norm);
             let eps = 0.000001 as f32;
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_lin_scale() {
-        let lin_scale = Conversion::new(0., 100., None, Kind::Float);
+        let lin_scale = Converter::new(0., 100., None, Kind::Float);
         let res = lin_scale.to_physical(0.5);
         //println!("{:#?}", res);
         assert_eq!(res, 50.);
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_lin_scale_inverted() {
-        let lin_scale = Conversion::new(0., 100., None, Kind::Float);
+        let lin_scale = Converter::new(0., 100., None, Kind::Float);
         let res = lin_scale.to_normalized(50.0);
         // println!("{:#?}", res);
         assert_eq!(res, 0.5);
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_round_up() {
-        let transform = Conversion::new(0., 100., None, Kind::Int);
+        let transform = Converter::new(0., 100., None, Kind::Int);
         let phys = transform.to_physical(0.505);
         // println!("{:#?}", res);
         assert_eq!(phys, 51.);
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_round_down() {
-        let transform = Conversion::new(0., 100., None, Kind::Int);
+        let transform = Converter::new(0., 100., None, Kind::Int);
         let phys = transform.to_physical(0.5049);
         // println!("{:#?}", res);
         assert_eq!(phys, 50.);
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_display_w_precision() {
-        let transform = Conversion::new(0., 100., None, Kind::Float);
+        let transform = Converter::new(0., 100., None, Kind::Float);
         let phys = transform.to_display(50., Some(2));
         // println!("{:#?}", res);
         assert_eq!(phys, "50.00");
