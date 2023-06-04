@@ -75,7 +75,7 @@ impl Converter {
     pub fn num_steps(&self) -> usize {
         match self.kind() {
             Kind::Float => 0,
-            Kind::Int => (self.max() - self.min()) as usize,
+            Kind::Int => (self.value_range.range) as usize,
         }
     }
 
