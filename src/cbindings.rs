@@ -4,10 +4,8 @@ use std::ffi::CString;
 // use std::slice;
 use std::{ffi::CStr, os::raw::c_char};
 
-use crate::convert::{
-    converter::{Converter, Kind},
-    display_handling::DisplayHandling,
-};
+use crate::param::conversion::Conversion as Converter;
+use crate::param::{conversion::Kind, display_handling::DisplayHandling};
 
 //-----------------------------------------------------------------------------
 // https://firefox-source-docs.mozilla.org/writing-rust-code/ffi.html

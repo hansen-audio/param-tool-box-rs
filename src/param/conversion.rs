@@ -2,7 +2,8 @@
 
 use std::ops::Neg;
 
-use crate::convert::display_handling::DisplayHandling;
+use crate::param::display_handling::DisplayHandling;
+use crate::param::range::Range;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -12,37 +13,16 @@ pub enum Kind {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ValueRange {
-    min: f32,
-    max: f32,
-    range: f32,
-    range_inv: f32,
-    is_inverted: bool,
-}
-
-impl ValueRange {
-    fn new(min: f32, max: f32) -> Self {
-        Self {
-            min,
-            max,
-            range: max - min,
-            range_inv: 1. / (max - min),
-            is_inverted: max < min,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Converter {
-    value_range: ValueRange,
+pub struct Conversion {
+    range: Range,
     kind: Kind,
     scale_factor: Option<f32>,
 }
 
-impl Converter {
+impl Conversion {
     pub fn new(min: f32, max: f32, mid: Option<f32>, kind: Kind) -> Self {
         Self {
-            value_range: ValueRange::new(min, max),
+            range: Range::new(min, max),
             kind,
             scale_factor: Self::calc_opt_transform_factor(min, max, mid),
         }
@@ -52,30 +32,30 @@ impl Converter {
         Physicalizer::new(normalized)
             .clamp()
             .scale(self.scale_factor)
-            .transform(self.value_range)
+            .transform(self.range)
             .round(self.kind)
     }
 
     pub fn to_normalized(&self, physical: f32) -> f32 {
         Normalizer::new(physical)
-            .clamp(self.value_range)
+            .clamp(self.range)
             .round(self.kind)
-            .transform(self.value_range)
+            .transform(self.range)
             .scale(self.scale_factor)
     }
 
     pub fn min(&self) -> f32 {
-        self.value_range.min
+        self.range.min()
     }
 
     pub fn max(&self) -> f32 {
-        self.value_range.max
+        self.range.max()
     }
 
     pub fn num_steps(&self) -> usize {
         match self.kind() {
             Kind::Float => 0,
-            Kind::Int => (self.value_range.range) as usize,
+            Kind::Int => (self.range.range()) as usize,
         }
     }
 
@@ -101,6 +81,16 @@ impl Converter {
     }
 }
 
+impl Range {
+    pub fn clamp(&self, value: f32) -> f32 {
+        if self.is_inverted() {
+            value.clamp(self.max(), self.min())
+        } else {
+            value.clamp(self.min(), self.max())
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Normalizer {
     value: f32,
@@ -111,12 +101,9 @@ impl Normalizer {
         Self { value }
     }
 
-    fn clamp(&mut self, value_range: ValueRange) -> &mut Self {
-        if value_range.is_inverted {
-            self.value = self.value.clamp(value_range.max, value_range.min);
-        } else {
-            self.value = self.value.clamp(value_range.min, value_range.max);
-        };
+    fn clamp(&mut self, range: Range) -> &mut Self {
+        self.value = range.clamp(self.value);
+
         self
     }
 
@@ -128,8 +115,8 @@ impl Normalizer {
         }
     }
 
-    fn transform(&mut self, value_range: ValueRange) -> &mut Self {
-        self.value = (self.value - value_range.min) * value_range.range_inv;
+    fn transform(&mut self, range: Range) -> &mut Self {
+        self.value = (self.value - range.min()) * range.range_inv();
         self
     }
 
@@ -169,8 +156,8 @@ impl Physicalizer {
         self
     }
 
-    fn transform(&mut self, value_range: ValueRange) -> &mut Self {
-        self.value = self.value * (value_range.range) + value_range.min;
+    fn transform(&mut self, value_range: Range) -> &mut Self {
+        self.value = self.value * (value_range.range()) + value_range.min();
 
         self
     }
@@ -185,7 +172,7 @@ impl Physicalizer {
     }
 }
 
-impl DisplayHandling for Converter {
+impl DisplayHandling for Conversion {
     fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
         format!(
             "{1:.0$}",
@@ -212,7 +199,7 @@ mod tests {
     fn test_log_scale_to_physical() {
         const TEST_VALS: [f32; 5] = [50., 25., 75., 66., 33.];
         for expected in TEST_VALS {
-            let log_scale = Converter::new(0., 100., Some(expected), Kind::Float);
+            let log_scale = Conversion::new(0., 100., Some(expected), Kind::Float);
             let res = log_scale.to_physical(0.5);
             //println!("{:#?}", res);
             assert_eq!(res, expected);
@@ -223,7 +210,7 @@ mod tests {
     fn test_log_scale_physical_negative() {
         const EXPECTED: f32 = 3.;
 
-        let log_scale = Converter::new(-96., 6., Some(EXPECTED), Kind::Float);
+        let log_scale = Conversion::new(-96., 6., Some(EXPECTED), Kind::Float);
         let res = log_scale.to_physical(0.5);
 
         assert_eq!(res, EXPECTED);
@@ -233,7 +220,7 @@ mod tests {
     fn test_log_scale_physical_negative_min() {
         const EXPECTED: f32 = -96.;
 
-        let log_scale = Converter::new(EXPECTED, 6., None, Kind::Float);
+        let log_scale = Conversion::new(EXPECTED, 6., None, Kind::Float);
         let res = log_scale.to_physical(0.);
 
         assert_eq!(res, EXPECTED);
@@ -243,7 +230,7 @@ mod tests {
     fn test_log_scale_physical_negative_max() {
         const EXPECTED: f32 = 6.;
 
-        let log_scale = Converter::new(-96., EXPECTED, None, Kind::Float);
+        let log_scale = Conversion::new(-96., EXPECTED, None, Kind::Float);
         let res = log_scale.to_physical(1.);
 
         assert_eq!(res, EXPECTED);
@@ -253,7 +240,7 @@ mod tests {
     fn test_log_scale_physical_lfo() {
         const TEST_VALS: [[f32; 2]; 3] = [[1., 30.], [0., 0.01], [0.5, 1.]];
 
-        let log_scale = Converter::new(0.01, 30., Some(1.), Kind::Float);
+        let log_scale = Conversion::new(0.01, 30., Some(1.), Kind::Float);
         for [norm, phys] in TEST_VALS {
             let res = log_scale.to_physical(norm);
             assert_eq!(res, phys);
@@ -264,7 +251,7 @@ mod tests {
     fn test_log_scale_physical_lfo_max_min() {
         const TEST_VALS: [[f32; 2]; 3] = [[1., 0.01], [0., 30.], [0.5, 1.]];
 
-        let log_scale = Converter::new(30., 0.01, Some(1.), Kind::Float);
+        let log_scale = Conversion::new(30., 0.01, Some(1.), Kind::Float);
         for [norm, phys] in TEST_VALS {
             let res = log_scale.to_physical(norm);
             let eps = 0.000001 as f32;
@@ -275,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_lin_scale() {
-        let lin_scale = Converter::new(0., 100., None, Kind::Float);
+        let lin_scale = Conversion::new(0., 100., None, Kind::Float);
         let res = lin_scale.to_physical(0.5);
         //println!("{:#?}", res);
         assert_eq!(res, 50.);
@@ -283,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_lin_scale_inverted() {
-        let lin_scale = Converter::new(0., 100., None, Kind::Float);
+        let lin_scale = Conversion::new(0., 100., None, Kind::Float);
         let res = lin_scale.to_normalized(50.0);
         // println!("{:#?}", res);
         assert_eq!(res, 0.5);
@@ -291,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_round_up() {
-        let transform = Converter::new(0., 100., None, Kind::Int);
+        let transform = Conversion::new(0., 100., None, Kind::Int);
         let phys = transform.to_physical(0.505);
         // println!("{:#?}", res);
         assert_eq!(phys, 51.);
@@ -299,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_round_down() {
-        let transform = Converter::new(0., 100., None, Kind::Int);
+        let transform = Conversion::new(0., 100., None, Kind::Int);
         let phys = transform.to_physical(0.5049);
         // println!("{:#?}", res);
         assert_eq!(phys, 50.);
@@ -307,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_display_w_precision() {
-        let transform = Converter::new(0., 100., None, Kind::Float);
+        let transform = Conversion::new(0., 100., None, Kind::Float);
         let phys = transform.to_display(50., Some(2));
         // println!("{:#?}", res);
         assert_eq!(phys, "50.00");
