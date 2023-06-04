@@ -187,8 +187,11 @@ impl Physicalizer {
 
 impl DisplayHandling for Converter {
     fn to_display(&self, physical: f32, precision: Option<usize>) -> String {
-        const DEFAULT_PRECISION: usize = 2;
-        format!("{1:.0$}", precision.unwrap_or(DEFAULT_PRECISION), physical)
+        format!(
+            "{1:.0$}",
+            precision.unwrap_or(Self::DEFAULT_PRECISION),
+            physical
+        )
     }
 
     fn from_display(&self, physical: String) -> f32 {
